@@ -1,0 +1,52 @@
+services:
+  nordvpn:
+    build: .
+    container_name: nordvpn
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - NORDVPN_TOKEN=${NORDVPN_TOKEN}
+      - NORDVPN_TECHNOLOGY=${NORDVPN_TECHNOLOGY:-NordLynx}
+      - NORDVPN_PROTOCOL=${NORDVPN_PROTOCOL:-udp}
+      - NORDVPN_GROUP=${NORDVPN_GROUP:-p2p}
+      - NORDVPN_COUNTRY=${NORDVPN_COUNTRY:-}
+      - NORDVPN_SERVER=${NORDVPN_SERVER:-}
+      - NORDVPN_KILLSWITCH=${NORDVPN_KILLSWITCH:-on}
+      - NORDVPN_THREAT_PROTECTION_LITE=${NORDVPN_THREAT_PROTECTION_LITE:-off}
+      - NORDVPN_OBFUSCATE=${NORDVPN_OBFUSCATE:-off}
+      - NORDVPN_MESHNET=${NORDVPN_MESHNET:-off}
+      - NORDVPN_ANALYTICS=${NORDVPN_ANALYTICS:-off}
+      - NORDVPN_NOTIFY=${NORDVPN_NOTIFY:-off}
+      - NORDVPN_AUTOCONNECT_STATE=${NORDVPN_AUTOCONNECT_STATE:-off}
+      - NORDVPN_AUTOCONNECT_TARGET=${NORDVPN_AUTOCONNECT_TARGET:-}
+      - NORDVPN_LAN_DISCOVERY=${NORDVPN_LAN_DISCOVERY:-disable}
+      - NORDVPN_DNS=${NORDVPN_DNS:-}
+      - NORDVPN_ALLOWLIST_PORTS=${NORDVPN_ALLOWLIST_PORTS:-}
+      - NORDVPN_ALLOWLIST_SUBNETS=${NORDVPN_ALLOWLIST_SUBNETS:-}
+      - NORDVPN_CONNECT=${NORDVPN_CONNECT:-}
+      - NORDVPN_SKIP_CONNECT=${NORDVPN_SKIP_CONNECT:-false}
+    volumes:
+      - ./data/nordvpn:/etc/nordvpn
+      - ./data/logs:/var/log/nordvpn
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nordvpn", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    stop_grace_period: 15s
+    ports:
+      - "6881:6881" # bittorrent
+      - "8080:8080" # qbittorrent Web UI
+      - "9696:9696" # prowlarr
+      - "8686:8686" # lidarr
+      - "7878:7878" # radarr
+      - "8989:8989" # sonarr
+      - "5055:5055" # overseerr
+      - "6969:6969" # whisparr
+      - "9117:9117" # bazarr
