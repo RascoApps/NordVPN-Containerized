@@ -1,0 +1,18 @@
+# Example /etc/hosts entries for accessing services via Traefik reverse proxy
+# 
+# Copy these lines to your system's /etc/hosts file:
+# - Linux/Mac: sudo nano /etc/hosts
+# - Windows: notepad C:\Windows\System32\drivers\etc\hosts (as Administrator)
+#
+# After adding these entries, you can access services at:
+# - http://traefik.local - Traefik dashboard
+# - http://qbittorrent.local - qBittorrent Web UI
+# - http://prowlarr.local - Prowlarr indexer manager
+# - http://radarr.local - Radarr movie manager
+# - http://sonarr.local - Sonarr TV show manager
+
+127.0.0.1 traefik.local
+127.0.0.1 qbittorrent.local
+127.0.0.1 prowlarr.local
+127.0.0.1 radarr.local
+127.0.0.1 sonarr.local

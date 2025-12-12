@@ -47,7 +47,7 @@ The compose file creates a custom bridge network (`vpn_network`) that isolates a
 Services using the VPN connection can be accessed via:
 
 1. **Traefik Reverse Proxy** (recommended):
-   - Add entries to your `/etc/hosts` file:
+   - Add entries to your `/etc/hosts` file (see `hosts.example` for quick copy-paste):
      ```
      127.0.0.1 qbittorrent.local
      127.0.0.1 prowlarr.local
