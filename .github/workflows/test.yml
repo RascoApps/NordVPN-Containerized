@@ -1,0 +1,41 @@
+name: Test Suite
+
+on:
+    push:
+        branches: [main, master]
+    pull_request:
+        branches: [main, master]
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Run entrypoint tests
+              run: |
+                  chmod +x tests/test_entrypoint.sh
+                  bash tests/test_entrypoint.sh
+
+            - name: Run compose integration tests
+              run: |
+                  chmod +x tests/test_compose_integration.sh
+                  bash tests/test_compose_integration.sh
+
+            - name: Validate Docker Compose
+              run: |
+                  docker compose config > /dev/null
+                  echo "Docker Compose file is valid"
+
+            - name: Validate Dockerfile syntax
+              run: |
+                  if grep -q "FROM ubuntu:24.04" Dockerfile && grep -q "ENTRYPOINT" Dockerfile; then
+                    echo "✓ Dockerfile structure is valid"
+                  else
+                    echo "✗ Dockerfile structure is invalid"
+                    exit 1
+                  fi

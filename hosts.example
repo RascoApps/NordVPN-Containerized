@@ -1,0 +1,11 @@
+# Path-based routing configuration for Traefik reverse proxy
+#
+# Services are accessible via path-based routing at http://localhost:
+# - http://localhost/qbittorrent - qBittorrent Web UI
+# - http://localhost/prowlarr - Prowlarr indexer manager
+# - http://localhost/radarr - Radarr movie manager
+# - http://localhost/sonarr - Sonarr TV show manager
+# - http://localhost:8081/dashboard/ - Traefik dashboard
+#
+# No /etc/hosts configuration needed!
+# Simply start the stack with `docker compose up -d` and access services via the paths above.

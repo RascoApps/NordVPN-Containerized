@@ -11,6 +11,14 @@ The image follows NordVPN's official Docker build guidance, installs the native 
 - [Installing & configuring NordVPN on Linux](https://support.nordvpn.com/hc/en-us/articles/20196094470929-Installing-NordVPN-on-Linux-distributions)
 - [NordVPN provider specifics used by Gluetun](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/nordvpn.md)
 
+## Features
+
+- **Automated Test Suite**: Comprehensive tests for configuration functions and Docker setup
+- **Reverse Proxy Integration**: Traefik reverse proxy with automatic service discovery
+- **Custom Docker Network**: Isolated VPN network for all services
+- **Example Service Stack**: Pre-configured media management services (qBittorrent, Prowlarr, Radarr, Sonarr)
+- **Service URL Mapping**: Access services via path-based routing (e.g., `http://localhost/prowlarr`)
+
 ## Getting started
 
 1. Export your NordVPN **service token** from the Nord Account portal (`Services → NordVPN → Manual setup`).
@@ -26,6 +34,29 @@ docker compose --env-file .env up -d
 ```
 
 > The container requires `NET_ADMIN`, the `/dev/net/tun` device, and IPv6 enabled (per NordVPN guidance) to avoid leaks.
+
+### Network Architecture
+
+The compose file creates a custom bridge network (`vpn_network`) that isolates all VPN-related traffic. Services can be configured in two ways:
+
+1. **Using NordVPN's network** (`network_mode: "service:nordvpn"`): All traffic goes through the VPN
+2. **On the shared network** (standard `networks` config): Can communicate with VPN services but doesn't route through VPN
+
+### Accessing Services
+
+Services using the VPN connection can be accessed via:
+
+1. **Traefik Reverse Proxy** (recommended):
+   - Access services via path-based routing at `http://localhost`:
+     - qBittorrent: `http://localhost/qbittorrent`
+     - Prowlarr: `http://localhost/prowlarr`
+     - Radarr: `http://localhost/radarr`
+     - Sonarr: `http://localhost/sonarr`
+   - View Traefik dashboard at `http://localhost:8081/dashboard/`
+
+2. **Direct Port Access**:
+   - Services are also accessible via exposed ports on the nordvpn container
+   - Note: Only BitTorrent ports (6881) are exposed by default in the updated config
 
 ### One-off `docker run`
 
@@ -68,6 +99,75 @@ Any variables omitted from `.env` keep NordVPN defaults, so you can start simple
 3. **Location pinning** – specify `NORDVPN_COUNTRY=nl` or `NORDVPN_SERVER=us8045` to control exit nodes.
 4. **Headless seedbox** – enable `NORDVPN_LAN_DISCOVERY=enable` and allowlist your LAN subnet (`NORDVPN_ALLOWLIST_SUBNETS=192.168.1.0/24`) so other containers can reach services on the VPN host.
 
+## Adding New Services
+
+To add a new service to the VPN network:
+
+1. Add the service to `compose.yaml`:
+
+```yaml
+myservice:
+  image: your/image:latest
+  container_name: myservice
+  environment:
+    - YOUR_ENV=value
+  volumes:
+    - ./data/myservice:/config
+  network_mode: "service:nordvpn"  # Route through VPN
+  depends_on:
+    - nordvpn
+  restart: unless-stopped
+  labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.myservice.rule=PathPrefix(`/myservice`)"
+    - "traefik.http.routers.myservice.entrypoints=web"
+    - "traefik.http.routers.myservice.middlewares=myservice-stripprefix"
+    - "traefik.http.middlewares.myservice-stripprefix.stripprefix.prefixes=/myservice"
+    - "traefik.http.services.myservice.loadbalancer.server.port=8080"  # Your service port
+```
+
+2. Restart the stack:
+```bash
+docker compose up -d
+```
+
+3. Access your service at `http://localhost/myservice`
+
+### Services Not Needing VPN
+
+If a service doesn't need VPN routing, use regular networking:
+
+```yaml
+myservice:
+  image: your/image:latest
+  networks:
+    - vpn_network
+  ports:
+    - "8080:8080"
+  # ... rest of config
+```
+
+## Testing
+
+Run the test suite to validate configuration:
+
+```bash
+# Run all tests
+bash tests/test_entrypoint.sh
+
+# Test compose file validity
+docker compose config
+
+# Run tests in CI
+# Tests run automatically on push/PR via GitHub Actions
+```
+
+The test suite validates:
+- Configuration normalization functions
+- Docker Compose file syntax
+- Dockerfile structure
+- Service connectivity (when containers are running)
+
 ## Health & lifecycle
 
 - The container ships with a `HEALTHCHECK` that marks it unhealthy if `nordvpn status` stops reporting a "Connected" state.
@@ -79,6 +179,28 @@ Any variables omitted from `.env` keep NordVPN defaults, so you can start simple
 - Use `docker logs nordvpn` to follow `/var/log/nordvpn/*` inside the container.
 - If logins fail, regenerate the service token and update `.env`.
 - Ensure the host kernel allows TUN devices and that no corporate firewall blocks UDP/51820 (WireGuard) or OpenVPN ports.
+- **Service not accessible via path**: Verify Traefik is running (`docker ps`) and check service labels are correct
+- **Service can't reach internet**: Verify the service uses `network_mode: "service:nordvpn"` and nordvpn is connected (`docker exec nordvpn nordvpn status`)
+- **Traefik shows no routes**: Check service labels are correct and containers are running
+
+## Reverse Proxy Details
+
+The included Traefik reverse proxy provides:
+
+- **Automatic Service Discovery**: Services with proper labels are automatically registered
+- **Path-based Routing**: Access services via URL paths like `http://localhost/prowlarr`
+- **Dashboard**: Monitor all routes at `http://localhost:8081/dashboard/`
+- **No SSL by default**: Add your own certificate configuration if needed
+
+### Traefik Configuration
+
+The proxy is configured via Docker labels on each service:
+- `traefik.enable=true`: Enable routing for this service
+- `traefik.http.routers.<name>.rule=PathPrefix(...)`: Define the URL path
+- `traefik.http.middlewares.<name>-stripprefix.stripprefix.prefixes=...`: Strip the path prefix before forwarding to the service
+- `traefik.http.services.<name>.loadbalancer.server.port=<port>`: Specify the service port
+
+Since services using `network_mode: "service:nordvpn"` share the nordvpn container's network stack, they are accessible through the nordvpn container's network namespace.
 
 ## Security notes
 
@@ -87,5 +209,8 @@ Any variables omitted from `.env` keep NordVPN defaults, so you can start simple
 
 ## Next steps
 
-- Pair this container with a torrent client (e.g., qBittorrent) on the same Docker network so all outbound traffic inherits the VPN tunnel.
-- Extend the `docker compose` file with dependent services using `network_mode: "service:nordvpn"` for automatic routing.
+- Customize the service stack by adding or removing services from `compose.yaml`
+- Configure Traefik with SSL certificates for HTTPS access
+- Set up additional routing rules or middleware in Traefik
+- Monitor your VPN connection health via `docker exec nordvpn nordvpn status`
+- Explore other NordVPN specialty groups beyond P2P (see configuration options above)

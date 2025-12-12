@@ -1,3 +1,11 @@
+networks:
+  vpn_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
 services:
   nordvpn:
     build: .
@@ -30,6 +38,8 @@ services:
     volumes:
       - ./data/nordvpn:/etc/nordvpn
       - ./data/logs:/var/log/nordvpn
+    networks:
+      - vpn_network
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
     restart: unless-stopped
@@ -42,11 +52,121 @@ services:
     stop_grace_period: 15s
     ports:
       - "6881:6881" # bittorrent
-      - "8080:8080" # qbittorrent Web UI
-      - "9696:9696" # prowlarr
-      - "8686:8686" # lidarr
-      - "7878:7878" # radarr
-      - "8989:8989" # sonarr
-      - "5055:5055" # overseerr
-      - "6969:6969" # whisparr
-      - "9117:9117" # bazarr
+      - "6881:6881/udp" # bittorrent UDP
+    labels:
+      - "traefik.enable=false"
+
+  # Traefik reverse proxy - maps service names to their ports
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"     # HTTP entrypoint
+      - "8081:8080" # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - vpn_network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=PathPrefix(`/dashboard`) || PathPrefix(`/api`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+
+  # Example service: qBittorrent Web UI
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - WEBUI_PORT=8080
+    volumes:
+      - ./data/qbittorrent/config:/config
+      - ./data/qbittorrent/downloads:/downloads
+    network_mode: "service:nordvpn"
+    depends_on:
+      - nordvpn
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=PathPrefix(`/qbittorrent`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=web"
+      - "traefik.http.routers.qbittorrent.middlewares=qbittorrent-stripprefix"
+      - "traefik.http.middlewares.qbittorrent-stripprefix.stripprefix.prefixes=/qbittorrent"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+
+  # Example service: Prowlarr (indexer manager)
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./data/prowlarr:/config
+    network_mode: "service:nordvpn"
+    depends_on:
+      - nordvpn
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=PathPrefix(`/prowlarr`)"
+      - "traefik.http.routers.prowlarr.entrypoints=web"
+      - "traefik.http.routers.prowlarr.middlewares=prowlarr-stripprefix"
+      - "traefik.http.middlewares.prowlarr-stripprefix.stripprefix.prefixes=/prowlarr"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+
+  # Example service: Radarr (movie manager)
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./data/radarr:/config
+      - ./data/qbittorrent/downloads:/downloads
+    network_mode: "service:nordvpn"
+    depends_on:
+      - nordvpn
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=PathPrefix(`/radarr`)"
+      - "traefik.http.routers.radarr.entrypoints=web"
+      - "traefik.http.routers.radarr.middlewares=radarr-stripprefix"
+      - "traefik.http.middlewares.radarr-stripprefix.stripprefix.prefixes=/radarr"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+
+  # Example service: Sonarr (TV shows manager)
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./data/sonarr:/config
+      - ./data/qbittorrent/downloads:/downloads
+    network_mode: "service:nordvpn"
+    depends_on:
+      - nordvpn
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarr.rule=PathPrefix(`/sonarr`)"
+      - "traefik.http.routers.sonarr.entrypoints=web"
+      - "traefik.http.routers.sonarr.middlewares=sonarr-stripprefix"
+      - "traefik.http.middlewares.sonarr-stripprefix.stripprefix.prefixes=/sonarr"
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
