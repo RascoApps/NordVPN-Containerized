@@ -1,0 +1,28 @@
+name: Test Suite
+
+on:
+    push:
+        branches: [main, master]
+    pull_request:
+        branches: [main, master]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Run entrypoint tests
+              run: |
+                  chmod +x tests/test_entrypoint.sh
+                  bash tests/test_entrypoint.sh
+
+            - name: Validate Docker Compose
+              run: |
+                  docker compose config > /dev/null
+                  echo "Docker Compose file is valid"
+
+            - name: Validate Dockerfile syntax
+              run: |
+                  docker build --check .
