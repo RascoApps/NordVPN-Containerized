@@ -87,12 +87,19 @@ test_traefik_labels() {
     assert_true "docker compose config | grep -A 20 'qbittorrent:' | grep -q 'traefik.http.routers.qbittorrent'" \
         "qbittorrent has traefik router configuration"
     
-    # Check if services have host rules
-    assert_true "docker compose config | grep -q 'Host.*qbittorrent.local'" \
-        "qbittorrent has host rule configured"
+    # Check if services have path-based rules
+    assert_true "docker compose config | grep -q 'PathPrefix.*qbittorrent'" \
+        "qbittorrent has path-based rule configured"
     
-    assert_true "docker compose config | grep -q 'Host.*prowlarr.local'" \
-        "prowlarr has host rule configured"
+    assert_true "docker compose config | grep -q 'PathPrefix.*prowlarr'" \
+        "prowlarr has path-based rule configured"
+    
+    # Check if services have stripprefix middleware
+    assert_true "docker compose config | grep -q 'stripprefix.prefixes.*qbittorrent'" \
+        "qbittorrent has stripprefix middleware configured"
+    
+    assert_true "docker compose config | grep -q 'stripprefix.prefixes.*prowlarr'" \
+        "prowlarr has stripprefix middleware configured"
 }
 
 # Test service dependencies

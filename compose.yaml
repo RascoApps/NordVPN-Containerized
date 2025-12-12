@@ -76,7 +76,7 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.local`)"
+      - "traefik.http.routers.dashboard.rule=PathPrefix(`/dashboard`) || PathPrefix(`/api`)"
       - "traefik.http.routers.dashboard.service=api@internal"
 
   # Example service: qBittorrent Web UI
@@ -97,8 +97,10 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.local`)"
+      - "traefik.http.routers.qbittorrent.rule=PathPrefix(`/qbittorrent`)"
       - "traefik.http.routers.qbittorrent.entrypoints=web"
+      - "traefik.http.routers.qbittorrent.middlewares=qbittorrent-stripprefix"
+      - "traefik.http.middlewares.qbittorrent-stripprefix.stripprefix.prefixes=/qbittorrent"
       - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
 
   # Example service: Prowlarr (indexer manager)
@@ -117,8 +119,10 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.local`)"
+      - "traefik.http.routers.prowlarr.rule=PathPrefix(`/prowlarr`)"
       - "traefik.http.routers.prowlarr.entrypoints=web"
+      - "traefik.http.routers.prowlarr.middlewares=prowlarr-stripprefix"
+      - "traefik.http.middlewares.prowlarr-stripprefix.stripprefix.prefixes=/prowlarr"
       - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
 
   # Example service: Radarr (movie manager)
@@ -138,8 +142,10 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.radarr.rule=Host(`radarr.local`)"
+      - "traefik.http.routers.radarr.rule=PathPrefix(`/radarr`)"
       - "traefik.http.routers.radarr.entrypoints=web"
+      - "traefik.http.routers.radarr.middlewares=radarr-stripprefix"
+      - "traefik.http.middlewares.radarr-stripprefix.stripprefix.prefixes=/radarr"
       - "traefik.http.services.radarr.loadbalancer.server.port=7878"
 
   # Example service: Sonarr (TV shows manager)
@@ -159,6 +165,8 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.sonarr.rule=Host(`sonarr.local`)"
+      - "traefik.http.routers.sonarr.rule=PathPrefix(`/sonarr`)"
       - "traefik.http.routers.sonarr.entrypoints=web"
+      - "traefik.http.routers.sonarr.middlewares=sonarr-stripprefix"
+      - "traefik.http.middlewares.sonarr-stripprefix.stripprefix.prefixes=/sonarr"
       - "traefik.http.services.sonarr.loadbalancer.server.port=8989"

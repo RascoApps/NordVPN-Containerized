@@ -17,7 +17,7 @@ The image follows NordVPN's official Docker build guidance, installs the native 
 - **Reverse Proxy Integration**: Traefik reverse proxy with automatic service discovery
 - **Custom Docker Network**: Isolated VPN network for all services
 - **Example Service Stack**: Pre-configured media management services (qBittorrent, Prowlarr, Radarr, Sonarr)
-- **Service URL Mapping**: Access services via friendly hostnames (e.g., `qbittorrent.local`)
+- **Service URL Mapping**: Access services via path-based routing (e.g., `http://localhost/prowlarr`)
 
 ## Getting started
 
@@ -47,20 +47,15 @@ The compose file creates a custom bridge network (`vpn_network`) that isolates a
 Services using the VPN connection can be accessed via:
 
 1. **Traefik Reverse Proxy** (recommended):
-   - Add entries to your `/etc/hosts` file (see `hosts.example` for quick copy-paste):
-     ```
-     127.0.0.1 qbittorrent.local
-     127.0.0.1 prowlarr.local
-     127.0.0.1 radarr.local
-     127.0.0.1 sonarr.local
-     127.0.0.1 traefik.local
-     ```
-   - Access services at `http://qbittorrent.local`, `http://prowlarr.local`, etc.
-   - View Traefik dashboard at `http://traefik.local`
+   - Access services via path-based routing at `http://localhost`:
+     - qBittorrent: `http://localhost/qbittorrent`
+     - Prowlarr: `http://localhost/prowlarr`
+     - Radarr: `http://localhost/radarr`
+     - Sonarr: `http://localhost/sonarr`
+   - View Traefik dashboard at `http://localhost:8081/dashboard/`
 
 2. **Direct Port Access**:
    - Services are also accessible via exposed ports on the nordvpn container
-   - qBittorrent: `http://localhost:8080`
    - Note: Only BitTorrent ports (6881) are exposed by default in the updated config
 
 ### One-off `docker run`
@@ -124,22 +119,19 @@ myservice:
   restart: unless-stopped
   labels:
     - "traefik.enable=true"
-    - "traefik.http.routers.myservice.rule=Host(`myservice.local`)"
+    - "traefik.http.routers.myservice.rule=PathPrefix(`/myservice`)"
     - "traefik.http.routers.myservice.entrypoints=web"
+    - "traefik.http.routers.myservice.middlewares=myservice-stripprefix"
+    - "traefik.http.middlewares.myservice-stripprefix.stripprefix.prefixes=/myservice"
     - "traefik.http.services.myservice.loadbalancer.server.port=8080"  # Your service port
 ```
 
-2. Add the hostname to `/etc/hosts`:
-```
-127.0.0.1 myservice.local
-```
-
-3. Restart the stack:
+2. Restart the stack:
 ```bash
 docker compose up -d
 ```
 
-4. Access your service at `http://myservice.local`
+3. Access your service at `http://localhost/myservice`
 
 ### Services Not Needing VPN
 
@@ -187,7 +179,7 @@ The test suite validates:
 - Use `docker logs nordvpn` to follow `/var/log/nordvpn/*` inside the container.
 - If logins fail, regenerate the service token and update `.env`.
 - Ensure the host kernel allows TUN devices and that no corporate firewall blocks UDP/51820 (WireGuard) or OpenVPN ports.
-- **Service not accessible via hostname**: Check `/etc/hosts` has the correct entry and Traefik is running (`docker ps`)
+- **Service not accessible via path**: Verify Traefik is running (`docker ps`) and check service labels are correct
 - **Service can't reach internet**: Verify the service uses `network_mode: "service:nordvpn"` and nordvpn is connected (`docker exec nordvpn nordvpn status`)
 - **Traefik shows no routes**: Check service labels are correct and containers are running
 
@@ -196,15 +188,16 @@ The test suite validates:
 The included Traefik reverse proxy provides:
 
 - **Automatic Service Discovery**: Services with proper labels are automatically registered
-- **Name-based Routing**: Access services via friendly hostnames instead of remembering ports
-- **Dashboard**: Monitor all routes at `http://traefik.local`
+- **Path-based Routing**: Access services via URL paths like `http://localhost/prowlarr`
+- **Dashboard**: Monitor all routes at `http://localhost:8081/dashboard/`
 - **No SSL by default**: Add your own certificate configuration if needed
 
 ### Traefik Configuration
 
 The proxy is configured via Docker labels on each service:
 - `traefik.enable=true`: Enable routing for this service
-- `traefik.http.routers.<name>.rule=Host(...)`: Define the hostname
+- `traefik.http.routers.<name>.rule=PathPrefix(...)`: Define the URL path
+- `traefik.http.middlewares.<name>-stripprefix.stripprefix.prefixes=...`: Strip the path prefix before forwarding to the service
 - `traefik.http.services.<name>.loadbalancer.server.port=<port>`: Specify the service port
 
 Since services using `network_mode: "service:nordvpn"` share the nordvpn container's network stack, they are accessible through the nordvpn container's network namespace.
