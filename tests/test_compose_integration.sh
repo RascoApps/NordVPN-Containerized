@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# Get the repository root directory
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -40,7 +43,7 @@ assert_true() {
 test_network_config() {
     print_test_header "Testing Network Configuration"
     
-    cd /home/runner/work/NordVPN-Containerized/NordVPN-Containerized
+    cd "$REPO_ROOT"
     
     # Check if vpn_network is defined
     assert_true "docker compose config | grep -q 'vpn_network'" \
@@ -55,7 +58,7 @@ test_network_config() {
 test_service_network_modes() {
     print_test_header "Testing Service Network Modes"
     
-    cd /home/runner/work/NordVPN-Containerized/NordVPN-Containerized
+    cd "$REPO_ROOT"
     
     # Check if qbittorrent uses nordvpn network mode
     assert_true "docker compose config | grep -A 10 'qbittorrent:' | grep -q 'network_mode:.*service:nordvpn'" \
@@ -74,7 +77,7 @@ test_service_network_modes() {
 test_traefik_labels() {
     print_test_header "Testing Traefik Labels"
     
-    cd /home/runner/work/NordVPN-Containerized/NordVPN-Containerized
+    cd "$REPO_ROOT"
     
     # Check if traefik service has enable label
     assert_true "docker compose config | grep -A 30 'traefik:' | grep -q 'traefik.enable.*true'" \
@@ -96,7 +99,7 @@ test_traefik_labels() {
 test_service_dependencies() {
     print_test_header "Testing Service Dependencies"
     
-    cd /home/runner/work/NordVPN-Containerized/NordVPN-Containerized
+    cd "$REPO_ROOT"
     
     # Check if services depend on nordvpn
     assert_true "docker compose config | grep -A 10 'qbittorrent:' | grep -q 'depends_on'" \
@@ -117,7 +120,7 @@ test_service_dependencies() {
 test_exposed_ports() {
     print_test_header "Testing Exposed Ports"
     
-    cd /home/runner/work/NordVPN-Containerized/NordVPN-Containerized
+    cd "$REPO_ROOT"
     
     # Check traefik ports
     assert_true "docker compose config 2>&1 | sed -n '/^  traefik:/,/^  [a-z]/p' | grep -A 5 'ports:' | grep -q 'target: 80'" \

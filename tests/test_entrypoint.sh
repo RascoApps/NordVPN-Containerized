@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+# Get the repository root directory
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -56,12 +59,6 @@ assert_success() {
         echo -e "${RED}✗${NC} ${test_name:-Command failed}"
         return 1
     fi
-}
-
-# Source the functions from entrypoint.sh
-source_entrypoint_functions() {
-    # Extract only the functions we need to test (not the main execution)
-    source <(grep -E '^(normalize_on_off|normalize_enable_disable|log|die)\(\)' /home/runner/work/NordVPN-Containerized/NordVPN-Containerized/entrypoint.sh -A 20 | sed '/^main()/,$d')
 }
 
 # Test normalize_on_off function
@@ -178,7 +175,7 @@ test_normalize_enable_disable() {
 test_compose_file_validity() {
     print_test_header "Testing docker-compose file validity"
     
-    cd /home/runner/work/NordVPN-Containerized/NordVPN-Containerized
+    cd "$REPO_ROOT"
     
     # Check if compose file is valid
     if docker compose config >/dev/null 2>&1; then
@@ -196,7 +193,7 @@ test_compose_file_validity() {
 test_dockerfile_validity() {
     print_test_header "Testing Dockerfile validity"
     
-    cd /home/runner/work/NordVPN-Containerized/NordVPN-Containerized
+    cd "$REPO_ROOT"
     
     # Check if Dockerfile has proper structure
     if grep -q "FROM ubuntu:24.04" Dockerfile && \
