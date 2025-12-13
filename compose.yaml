@@ -241,7 +241,7 @@ services:
 
   whisparr:
     container_name: whisparr
-    image: ghcr.io/hotio/whisparr
+    image: ghcr.io/hotio/whisparr:latest
     depends_on:
       - nordvpn
     environment:
