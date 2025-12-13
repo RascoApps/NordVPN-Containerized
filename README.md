@@ -14,35 +14,42 @@ The image follows NordVPN's official Docker build guidance, installs the native 
 ## Getting started
 
 1. Export your NordVPN **service token** from the Nord Account portal (`Services → NordVPN → Manual setup`).
-2. Copy `.env.example` to `.env` and fill in `NORDVPN_TOKEN`. Adjust other settings as needed.
-3. Build and start the container:
+2. Copy `.env.example` to `.env` and fill in `NORDVPN_TOKEN`. Adjust other settings as needed (PUID, PGID, TZ, storage paths, etc.).
+3. Build and start the services:
 
 ```bash
-# Build once
-docker build -t nordvpn-cli .
-
 # Run with docker compose (recommended)
-docker compose --env-file .env up -d
+docker compose up -d
 ```
 
-> The container requires `NET_ADMIN`, the `/dev/net/tun` device, and IPv6 enabled (per NordVPN guidance) to avoid leaks.
+> The NordVPN container requires `NET_ADMIN`, the `/dev/net/tun` device, and IPv6 enabled (per NordVPN guidance) to avoid leaks.
 
-### One-off `docker run`
+## Multi-Service Stack
 
-```bash
-docker run -it --rm \
-  --cap-add=NET_ADMIN \
-  --device /dev/net/tun:/dev/net/tun \
-  --sysctl net.ipv6.conf.all.disable_ipv6=0 \
-  --env-file .env \
-  nordvpn-cli
-```
+The `compose.yaml` includes a complete media server stack with the following services:
+
+### Services Routing Through VPN
+- **qBittorrent** - BitTorrent client (port 8080)
+- **Prowlarr** - Indexer manager (port 9696)
+- **Lidarr** - Music collection manager (port 8686)
+- **Radarr** - Movie collection manager (port 7878)
+- **Sonarr** - TV show collection manager (port 8989)
+- **Overseerr** - Request management (port 5055)
+- **Whisparr** - Adult content manager (port 6969)
+
+### Services Bypassing VPN
+- **Traefik** - Reverse proxy (HTTP: port 100, Dashboard: port 8081)
+- **Plex** - Media server (port 32400)
+
+All VPN-routed services are accessible through Traefik at `http://your-host:100/<service-name>` or directly via their exposed ports on the nordvpn container.
 
 ### Persisting credentials
 
 The compose file mounts `./data/nordvpn` to `/etc/nordvpn`, which stores the CLI credentials. After the first successful token login the session survives restarts.
 
 ## Configuration surface
+
+### NordVPN Settings
 
 | Variable | Purpose |
 | --- | --- |
@@ -58,6 +65,18 @@ The compose file mounts `./data/nordvpn` to `/etc/nordvpn`, which stores the CLI
 | `NORDVPN_LAN_DISCOVERY` | `enable`/`disable` using `nordvpn set lan-discovery …`. |
 | `NORDVPN_DNS` | Space/comma separated list of custom DNS servers applied through `nordvpn set dns`. |
 | `NORDVPN_ALLOWLIST_PORTS` / `NORDVPN_ALLOWLIST_SUBNETS` | Lists passed to `nordvpn whitelist add port` / `nordvpn whitelist add subnet` so LAN services can bypass the tunnel. |
+
+### Docker Environment Variables
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `PUID` | User ID for file permissions | 1000 |
+| `PGID` | Group ID for file permissions | 1000 |
+| `TZ` | Timezone for containers | America/New_York |
+| `DOCKERCONFDIR` | Path for application config directories | ./config |
+| `DOCKERSTORAGEDIR` | Path for media/data storage | ./storage |
+| `PLEX_CLAIM` | Plex claim token for initial setup | (empty) |
+| `PLEX_PASS` | Whether Plex Pass features are enabled | no |
 
 Any variables omitted from `.env` keep NordVPN defaults, so you can start simple and layer adjustments later.
 
@@ -84,8 +103,15 @@ Any variables omitted from `.env` keep NordVPN defaults, so you can start simple
 
 - Tokens grant full account access for manual configs—store `.env` securely.
 - Consider running this container on dedicated hosts if other workloads depend on the routed traffic.
+- All media service containers connect to the VPN through the shared `vpn_network` bridge network.
+- Plex bypasses the VPN to allow direct streaming from your local network.
 
-## Next steps
+## Architecture
 
-- Pair this container with a torrent client (e.g., qBittorrent) on the same Docker network so all outbound traffic inherits the VPN tunnel.
-- Extend the `docker compose` file with dependent services using `network_mode: "service:nordvpn"` for automatic routing.
+The docker-compose stack uses the following networking model:
+
+- **vpn_network** (172.21.0.0/16): Bridge network shared by NordVPN and all media services (qBittorrent, *arr apps, etc.)
+- **default network**: Used by Plex to bypass the VPN
+- **Traefik**: Reverse proxy providing unified HTTP access at port 100, with service routing via path prefixes
+
+All VPN-routed services depend on the `nordvpn` container and automatically use the VPN tunnel for external connections.
