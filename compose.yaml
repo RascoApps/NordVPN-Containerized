@@ -9,14 +9,16 @@ name: core
 services:
   # VPN gateway (token-based) - replaces azinchen/nordvpn
   nordvpn:
-    build:
-      context: ./nordvpn
+    # build:
+    #   context: ./nordvpn
     container_name: nordvpn
+    image: ghcr.io/rascoapps/nordvpn-cli:sha-35ff548
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
+      - TZ=${TZ:-America/Denver}
       - NORDVPN_TOKEN=${NORDVPN_TOKEN}
       - NORDVPN_TECHNOLOGY=${NORDVPN_TECHNOLOGY:-NordLynx}
       - NORDVPN_PROTOCOL=${NORDVPN_PROTOCOL:-udp}
@@ -96,6 +98,7 @@ services:
     image: ghcr.io/hotio/qbittorrent:latest
     depends_on:
       - nordvpn
+    network_mode: "container:nordvpn"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -113,14 +116,13 @@ services:
       - "traefik.http.routers.qbittorrent.middlewares=qbittorrent-stripprefix"
       - "traefik.http.middlewares.qbittorrent-stripprefix.stripprefix.prefixes=/qbittorrent"
       - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
-    networks:
-      - vpn_network
 
   prowlarr:
     container_name: prowlarr
     image: ghcr.io/hotio/prowlarr:latest
     depends_on:
       - nordvpn
+    network_mode: "container:nordvpn"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -136,14 +138,13 @@ services:
       - "traefik.http.routers.prowlarr.middlewares=prowlarr-stripprefix"
       - "traefik.http.middlewares.prowlarr-stripprefix.stripprefix.prefixes=/prowlarr"
       - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
-    networks:
-      - vpn_network
 
   lidarr:
     container_name: lidarr
     image: ghcr.io/hotio/lidarr:latest
     depends_on:
       - nordvpn
+    network_mode: "container:nordvpn"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -161,14 +162,13 @@ services:
       - "traefik.http.routers.lidarr.middlewares=lidarr-stripprefix"
       - "traefik.http.middlewares.lidarr-stripprefix.stripprefix.prefixes=/lidarr"
       - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
-    networks:
-      - vpn_network
 
   radarr:
     container_name: radarr
     image: ghcr.io/hotio/radarr:latest
     depends_on:
       - nordvpn
+    network_mode: "container:nordvpn"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -187,14 +187,13 @@ services:
       - "traefik.http.routers.radarr.middlewares=radarr-stripprefix"
       - "traefik.http.middlewares.radarr-stripprefix.stripprefix.prefixes=/radarr"
       - "traefik.http.services.radarr.loadbalancer.server.port=7878"
-    networks:
-      - vpn_network
 
   sonarr:
     container_name: sonarr
     image: ghcr.io/hotio/sonarr:latest
     depends_on:
       - nordvpn
+    network_mode: "container:nordvpn"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -212,14 +211,13 @@ services:
       - "traefik.http.routers.sonarr.middlewares=sonarr-stripprefix"
       - "traefik.http.middlewares.sonarr-stripprefix.stripprefix.prefixes=/sonarr"
       - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
-    networks:
-      - vpn_network
 
   overseerr:
     container_name: overseerr
     image: ghcr.io/hotio/overseerr:latest
     depends_on:
       - nordvpn
+    network_mode: "container:nordvpn"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -236,14 +234,13 @@ services:
       - "traefik.http.routers.overseerr.middlewares=overseerr-stripprefix"
       - "traefik.http.middlewares.overseerr-stripprefix.stripprefix.prefixes=/overseerr"
       - "traefik.http.services.overseerr.loadbalancer.server.port=5055"
-    networks:
-      - vpn_network
 
   whisparr:
     container_name: whisparr
     image: ghcr.io/hotio/whisparr:latest
     depends_on:
       - nordvpn
+    network_mode: "container:nordvpn"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -261,8 +258,6 @@ services:
       - "traefik.http.routers.whisparr.middlewares=whisparr-stripprefix"
       - "traefik.http.middlewares.whisparr-stripprefix.stripprefix.prefixes=/whisparr"
       - "traefik.http.services.whisparr.loadbalancer.server.port=6969"
-    networks:
-      - vpn_network
 
   ############################
   # Plex (Bypasses the VPN)  #

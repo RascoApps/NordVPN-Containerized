@@ -111,12 +111,39 @@ apply_allowlist() {
 }
 
 start_daemon() {
+  # If already running, do nothing
   if /etc/init.d/nordvpn status >/dev/null 2>&1; then
     return
   fi
-  log "Starting nordvpnd"
-  /etc/init.d/nordvpn start
-  sleep 3
+
+  # Prefer systemd when available (rare in containers)
+  if command -v systemctl >/dev/null 2>&1; then
+    log "Starting nordvpnd via systemctl"
+    if ! systemctl enable --now nordvpnd >/dev/null 2>&1; then
+      log "WARNING: systemctl failed, falling back to init.d"
+    else
+      sleep 3
+      return
+    fi
+  fi
+
+  # Fallback to SysV init scripts inside container environments
+  if [[ -x "/etc/init.d/nordvpn" ]]; then
+    log "Starting nordvpnd via /etc/init.d/nordvpn"
+    /etc/init.d/nordvpn start || true
+    sleep 3
+    return
+  fi
+
+  # Last resort: try launching nordvpnd directly
+  if command -v nordvpnd >/dev/null 2>&1; then
+    log "Starting nordvpnd directly"
+    nordvpnd &
+    sleep 3
+    return
+  fi
+
+  die "Unable to start NordVPN daemon: no systemctl, no init.d script, and no nordvpnd binary"
 }
 
 ensure_login() {
