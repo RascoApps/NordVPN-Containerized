@@ -1,12 +1,24 @@
+networks:
+  vpn_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.21.0.0/16
+name: core
 services:
+  # VPN gateway (token-based) - replaces azinchen/nordvpn
   nordvpn:
-    build: .
+    # build:
+    #   context: ./nordvpn
     container_name: nordvpn
+    image: ghcr.io/rascoapps/nordvpn-cli:sha-35ff548
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
+      - TZ=${TZ:-America/Denver}
       - NORDVPN_TOKEN=${NORDVPN_TOKEN}
       - NORDVPN_TECHNOLOGY=${NORDVPN_TECHNOLOGY:-NordLynx}
       - NORDVPN_PROTOCOL=${NORDVPN_PROTOCOL:-udp}
@@ -28,8 +40,10 @@ services:
       - NORDVPN_CONNECT=${NORDVPN_CONNECT:-}
       - NORDVPN_SKIP_CONNECT=${NORDVPN_SKIP_CONNECT:-false}
     volumes:
-      - ./data/nordvpn:/etc/nordvpn
-      - ./data/logs:/var/log/nordvpn
+      - ./nordvpn/data/nordvpn:/etc/nordvpn
+      - ./nordvpn/data/logs:/var/log/nordvpn
+    networks:
+      - vpn_network
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
     restart: unless-stopped
@@ -42,11 +56,231 @@ services:
     stop_grace_period: 15s
     ports:
       - "6881:6881" # bittorrent
-      - "8080:8080" # qbittorrent Web UI
+      - "6881:6881/udp" # bittorrent UDP
+      - "8080:8080" # qbittorrent
       - "9696:9696" # prowlarr
       - "8686:8686" # lidarr
       - "7878:7878" # radarr
       - "8989:8989" # sonarr
       - "5055:5055" # overseerr
       - "6969:6969" # whisparr
-      - "9117:9117" # bazarr
+    labels:
+      - "traefik.enable=false"
+
+  # Reverse proxy for all web UIs (single LAN entrypoint)
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+    ports:
+      - "100:80" # HTTP entrypoint
+      - "8081:8080" # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - vpn_network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=PathPrefix(`/dashboard`) || PathPrefix(`/api`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+
+  ############################
+  # Services Routing via VPN #
+  ############################
+  qbittorrent:
+    container_name: qbittorrent
+    image: ghcr.io/hotio/qbittorrent:latest
+    depends_on:
+      - nordvpn
+    network_mode: "container:nordvpn"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=022
+    volumes:
+      - ${DOCKERCONFDIR}/qbittorrent:/config:rw
+      - ${DOCKERSTORAGEDIR}:/data/:rw
+      - ${DOCKERSTORAGEDIR}/downloads:/app/qBittorrent/downloads
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=PathPrefix(`/qbittorrent`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=web"
+      - "traefik.http.routers.qbittorrent.middlewares=qbittorrent-stripprefix"
+      - "traefik.http.middlewares.qbittorrent-stripprefix.stripprefix.prefixes=/qbittorrent"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+
+  prowlarr:
+    container_name: prowlarr
+    image: ghcr.io/hotio/prowlarr:latest
+    depends_on:
+      - nordvpn
+    network_mode: "container:nordvpn"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${DOCKERCONFDIR}/prowlarr:/config:rw
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=PathPrefix(`/prowlarr`)"
+      - "traefik.http.routers.prowlarr.entrypoints=web"
+      - "traefik.http.routers.prowlarr.middlewares=prowlarr-stripprefix"
+      - "traefik.http.middlewares.prowlarr-stripprefix.stripprefix.prefixes=/prowlarr"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+
+  lidarr:
+    container_name: lidarr
+    image: ghcr.io/hotio/lidarr:latest
+    depends_on:
+      - nordvpn
+    network_mode: "container:nordvpn"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/lidarr:/config
+      - ${DOCKERSTORAGEDIR}:/data
+      - ${DOCKERSTORAGEDIR}/downloads:/app/qBittorrent/downloads
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidarr.rule=PathPrefix(`/lidarr`)"
+      - "traefik.http.routers.lidarr.entrypoints=web"
+      - "traefik.http.routers.lidarr.middlewares=lidarr-stripprefix"
+      - "traefik.http.middlewares.lidarr-stripprefix.stripprefix.prefixes=/lidarr"
+      - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+
+  radarr:
+    container_name: radarr
+    image: ghcr.io/hotio/radarr:latest
+    depends_on:
+      - nordvpn
+    network_mode: "container:nordvpn"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/radarr:/config
+      - ${DOCKERSTORAGEDIR}:/data
+      - ${DOCKERSTORAGEDIR}/torrents/radarr:/data/torrents/radarr
+      - ${DOCKERSTORAGEDIR}/downloads:/app/qBittorrent/downloads
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=PathPrefix(`/radarr`)"
+      - "traefik.http.routers.radarr.entrypoints=web"
+      - "traefik.http.routers.radarr.middlewares=radarr-stripprefix"
+      - "traefik.http.middlewares.radarr-stripprefix.stripprefix.prefixes=/radarr"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+
+  sonarr:
+    container_name: sonarr
+    image: ghcr.io/hotio/sonarr:latest
+    depends_on:
+      - nordvpn
+    network_mode: "container:nordvpn"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/sonarr:/config
+      - ${DOCKERSTORAGEDIR}:/data
+      - ${DOCKERSTORAGEDIR}/downloads:/app/qBittorrent/downloads
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarr.rule=PathPrefix(`/sonarr`)"
+      - "traefik.http.routers.sonarr.entrypoints=web"
+      - "traefik.http.routers.sonarr.middlewares=sonarr-stripprefix"
+      - "traefik.http.middlewares.sonarr-stripprefix.stripprefix.prefixes=/sonarr"
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
+
+  overseerr:
+    container_name: overseerr
+    image: ghcr.io/hotio/overseerr:latest
+    depends_on:
+      - nordvpn
+    network_mode: "container:nordvpn"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/overseerr:/config
+      - ${DOCKERSTORAGEDIR}/media:/data/media
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.overseerr.rule=PathPrefix(`/overseerr`)"
+      - "traefik.http.routers.overseerr.entrypoints=web"
+      - "traefik.http.routers.overseerr.middlewares=overseerr-stripprefix"
+      - "traefik.http.middlewares.overseerr-stripprefix.stripprefix.prefixes=/overseerr"
+      - "traefik.http.services.overseerr.loadbalancer.server.port=5055"
+
+  whisparr:
+    container_name: whisparr
+    image: ghcr.io/hotio/whisparr:latest
+    depends_on:
+      - nordvpn
+    network_mode: "container:nordvpn"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+    volumes:
+      - ${DOCKERCONFDIR}/whisparr:/config
+      - ${DOCKERSTORAGEDIR}/media/porn:/data
+      - ${DOCKERSTORAGEDIR}/downloads:/app/qBittorrent/downloads
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whisparr.rule=PathPrefix(`/whisparr`)"
+      - "traefik.http.routers.whisparr.entrypoints=web"
+      - "traefik.http.routers.whisparr.middlewares=whisparr-stripprefix"
+      - "traefik.http.middlewares.whisparr-stripprefix.stripprefix.prefixes=/whisparr"
+      - "traefik.http.services.whisparr.loadbalancer.server.port=6969"
+
+  ############################
+  # Plex (Bypasses the VPN)  #
+  ############################
+  plex:
+    container_name: plex
+    image: ghcr.io/hotio/plex:latest
+    hostname: plex
+    restart: unless-stopped
+    ports:
+      - "32400:32400"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=002
+      - ARGS=
+      - PLEX_CLAIM=${PLEX_CLAIM}
+      - ADVERTISE_IP=http://192.168.0.10:32400/
+      - ALLOWED_NETWORKS=192.168.0.0/24
+      - PLEX_PASS=${PLEX_PASS}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DOCKERCONFDIR}/plex:/config:rw
+      - ${DOCKERSTORAGEDIR}/media:/data/media:rw
+      - ${DOCKERSTORAGEDIR}/downloads:/data/downloads:rw
